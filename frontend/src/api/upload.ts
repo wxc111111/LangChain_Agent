@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:8002'
+const BASE_URL = 'http://localhost:8004'
 
 export interface UploadResult {
   id: number

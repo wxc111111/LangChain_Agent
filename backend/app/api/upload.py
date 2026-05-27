@@ -41,7 +41,7 @@ async def upload_image(
     with open(stored_path, "wb") as f:
         f.write(content)
 
-    image_url = f"http://localhost:8002/uploads/{stored_name}"
+    image_url = f"http://localhost:8004/uploads/{stored_name}"
     record = ImageUpload(
         user_id=current_user.id,
         filename=file.filename or stored_name,

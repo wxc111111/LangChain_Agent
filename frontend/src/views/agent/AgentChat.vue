@@ -1,81 +1,103 @@
 <template>
-  <div class="agent-chat">
-    <div class="chat-window" ref="chatWindow">
-      <div v-if="messages.length === 0" class="empty-hint">
-        <p>我是 AI 智能助手，可以帮你：</p>
-        <ul>
-          <li>查询天气和穿衣建议</li>
-          <li>生成图片 / 识别图片内容</li>
-          <li>查询工单和任务</li>
-        </ul>
-      </div>
-
-      <div v-for="(msg, i) in messages" :key="i" :class="['message', msg.role]">
-        <div class="avatar">{{ msg.role === 'user' ? '我' : 'AI' }}</div>
-        <div class="bubble">
-          <div v-if="msg.tools" class="tool-tag">
-            已调用: {{ msg.tools.join(', ') }}
-          </div>
-          <div class="text">
-            <template v-for="(part, partIndex) in renderContentParts(msg)" :key="partIndex">
-              <span v-if="part.type === 'text'">{{ part.content }}</span>
-              <a
-                v-else-if="part.type === 'link'"
-                :href="part.url"
-                target="_blank"
-                rel="noopener"
-              >
-                {{ part.label }}
-              </a>
-              <img
-                v-else
-                class="chat-image"
-                :src="part.url"
-                :alt="part.alt || '聊天图片'"
-                @click="previewUrl = part.url"
-              />
-            </template>
-          </div>
-          <span v-if="msg.streaming" class="cursor">|</span>
+  <div class="agent-page">
+    <!-- 左侧会话列表 -->
+    <aside class="sidebar">
+      <button class="new-conv-btn" @click="startNewConversation">+ 新对话</button>
+      <div class="conv-list">
+        <div v-if="conversations.length === 0" class="empty-conv">暂无对话</div>
+        <div
+          v-for="c in conversations"
+          :key="c.id"
+          :class="['conv-item', { active: c.id === currentConvId }]"
+          @click="switchConversation(c.id)"
+        >
+          <div class="conv-title">{{ c.title || '新对话' }}</div>
+          <div class="conv-meta">{{ c.round_count }} 轮</div>
+          <button class="conv-delete" @click.stop="deleteConversation(c.id)" title="删除对话">×</button>
         </div>
       </div>
-    </div>
+    </aside>
 
-    <!-- 缩略图预览 -->
-    <div v-if="pendingImages.length > 0" class="image-preview-bar">
-      <div v-for="(img, i) in pendingImages" :key="i" class="thumbnail-wrap">
-        <img :src="img.previewUrl" class="thumbnail" />
-        <button class="remove-btn" @click="removeImage(i)" :disabled="loading">x</button>
-        <span v-if="img.uploading" class="upload-spinner">上传中...</span>
+    <!-- 右侧对话区 -->
+    <div class="agent-chat">
+      <div class="chat-window" ref="chatWindow">
+        <div v-if="messages.length === 0" class="empty-hint">
+          <p>我是 AI 智能助手，可以帮你：</p>
+          <ul>
+            <li>查询天气和穿衣建议</li>
+            <li>生成图片 / 识别图片内容</li>
+            <li>查询工单和任务</li>
+          </ul>
+        </div>
+
+        <div v-for="(msg, i) in messages" :key="i" :class="['message', msg.role]">
+          <div class="avatar">{{ msg.role === 'user' ? '我' : 'AI' }}</div>
+          <div class="bubble">
+            <div v-if="msg.tools" class="tool-tag">
+              已调用: {{ msg.tools.join(', ') }}
+            </div>
+            <div class="text">
+              <template v-for="(part, partIndex) in renderContentParts(msg)" :key="partIndex">
+                <span v-if="part.type === 'text'">{{ part.content }}</span>
+                <a
+                  v-else-if="part.type === 'link'"
+                  :href="part.url"
+                  target="_blank"
+                  rel="noopener"
+                >
+                  {{ part.label }}
+                </a>
+                <img
+                  v-else
+                  class="chat-image"
+                  :src="part.url"
+                  :alt="part.alt || '聊天图片'"
+                  @click="previewUrl = part.url"
+                />
+              </template>
+            </div>
+            <span v-if="msg.streaming" class="cursor">|</span>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <div class="input-area">
-      <button class="upload-btn" :disabled="loading || pendingImages.length >= 3" @click="triggerUpload">
-        +
-      </button>
-      <input
-        v-model="input"
-        type="text"
-        placeholder="输入问题，也可以上传图片..."
-        :disabled="loading"
-        @keydown.enter="send"
-      />
-      <button :disabled="loading || (!input.trim() && pendingImages.length === 0)" @click="send">
-        {{ loading ? '思考中...' : '发送' }}
-      </button>
-    </div>
+      <!-- 缩略图预览 -->
+      <div v-if="pendingImages.length > 0" class="image-preview-bar">
+        <div v-for="(img, i) in pendingImages" :key="i" class="thumbnail-wrap">
+          <img :src="img.previewUrl" class="thumbnail" />
+          <button class="remove-btn" @click="removeImage(i)" :disabled="loading">x</button>
+          <span v-if="img.uploading" class="upload-spinner">上传中...</span>
+        </div>
+      </div>
 
-    <div v-if="previewUrl" class="image-overlay" @click="previewUrl = ''">
-      <img :src="previewUrl" class="image-preview" @click.stop />
+      <div class="input-area">
+        <button class="upload-btn" :disabled="loading || pendingImages.length >= 3" @click="triggerUpload">
+          +
+        </button>
+        <input
+          v-model="input"
+          type="text"
+          placeholder="输入问题，也可以上传图片..."
+          :disabled="loading"
+          @keydown.enter="send"
+        />
+        <button :disabled="loading || (!input.trim() && pendingImages.length === 0)" @click="send">
+          {{ loading ? '思考中...' : '发送' }}
+        </button>
+      </div>
+
+      <div v-if="previewUrl" class="image-overlay" @click="previewUrl = ''">
+        <img :src="previewUrl" class="image-preview" @click.stop />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onBeforeUnmount } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { chatStream, type SSEMessage } from '../../api/agent'
 import { uploadImage } from '../../api/upload'
+import { listConversations, getMessages, removeConversation, type ConversationItem, type MessageItem } from '../../api/conversations'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -96,6 +118,8 @@ interface PendingImage {
 }
 
 const messages = ref<ChatMessage[]>([])
+const conversations = ref<ConversationItem[]>([])
+const currentConvId = ref<number | null>(null)
 const input = ref('')
 const loading = ref(false)
 const previewUrl = ref('')
@@ -104,13 +128,17 @@ let fileInput: HTMLInputElement | null = null
 const chatWindow = ref<HTMLElement>()
 let controller: AbortController | null = null
 
+onMounted(async () => {
+  try {
+    conversations.value = await listConversations()
+  } catch { /* 忽略 */ }
+})
+
 function isImageUrl(url: string): boolean {
-  // 判断链接是否为常见图片地址，匹配后只渲染图片，不再把完整地址作为文字输出
   return /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(url)
 }
 
 function splitPlainUrl(url: string): { cleanUrl: string; suffix: string } {
-  // 分离纯链接末尾的中文或英文标点，避免标点影响图片链接识别
   const match = url.match(/^(.+?)([，。！？、,.!?]*)$/)
   return {
     cleanUrl: match?.[1] || url,
@@ -119,7 +147,6 @@ function splitPlainUrl(url: string): { cleanUrl: string; suffix: string } {
 }
 
 function pushTextPart(parts: ContentPart[], content: string) {
-  // 合并连续文本片段，避免流式内容频繁刷新时生成过多 DOM 节点
   if (!content) return
   const lastPart = parts[parts.length - 1]
   if (lastPart?.type === 'text') {
@@ -130,7 +157,6 @@ function pushTextPart(parts: ContentPart[], content: string) {
 }
 
 function renderContentParts(msg: ChatMessage): ContentPart[] {
-  // 将消息内容拆成文本、链接、图片，图片只展示加载态和预览，不展示完整 URL
   const content = msg.content || '...'
   const parts: ContentPart[] = []
   const tokenPattern = /!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)|(https?:\/\/\S+)/g
@@ -224,13 +250,57 @@ function removeImage(i: number) {
 }
 
 async function scrollBottom() {
-  // 等 Vue 完成 DOM 更新后，再等浏览器完成布局计算，确保能滚动到最新高度
   await nextTick()
   requestAnimationFrame(() => {
     if (chatWindow.value) {
       chatWindow.value.scrollTop = chatWindow.value.scrollHeight
     }
   })
+}
+
+function startNewConversation() {
+  controller?.abort()
+  currentConvId.value = null
+  messages.value = []
+}
+
+async function switchConversation(convId: number) {
+  if (convId === currentConvId.value) return
+  controller?.abort()
+  currentConvId.value = convId
+  messages.value = []
+  loading.value = false
+
+  try {
+    const msgs: MessageItem[] = await getMessages(convId)
+    messages.value = msgs.map(m => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }))
+    await scrollBottom()
+  } catch {
+    // ignore
+  }
+}
+
+async function refreshConversations() {
+  try {
+    conversations.value = await listConversations()
+  } catch { /* ignore */ }
+}
+
+async function deleteConversation(convId: number) {
+  if (!confirm('确定删除该对话？')) return
+  try {
+    await removeConversation(convId)
+    conversations.value = conversations.value.filter(c => c.id !== convId)
+    if (currentConvId.value === convId) {
+      currentConvId.value = null
+      messages.value = []
+    }
+  } catch {
+    // ignore
+  }
 }
 
 function send() {
@@ -267,8 +337,15 @@ function send() {
   controller = chatStream(
     text,
     images,
+    currentConvId.value,
     async (msg: SSEMessage) => {
       switch (msg.type) {
+        case 'meta':
+          if (msg.conversation_id && !currentConvId.value) {
+            currentConvId.value = msg.conversation_id
+            refreshConversations()
+          }
+          break
         case 'intent':
           if (msg.tools && msg.tools.length > 0) {
             messages.value[aiMsgIndex].tools = msg.tools
@@ -278,7 +355,6 @@ function send() {
           pending += msg.data as string
           if (!rafId) {
             rafId = requestAnimationFrame(() => {
-              // 通过响应式数组里的消息对象更新内容，保证每个流式分片都能触发界面刷新
               messages.value[aiMsgIndex].content += pending
               pending = ''
               rafId = 0
@@ -299,6 +375,7 @@ function send() {
       messages.value[aiMsgIndex].streaming = false
       loading.value = false
       scrollBottom()
+      refreshConversations()
     },
     (err: string) => {
       if (rafId) cancelAnimationFrame(rafId)
@@ -315,12 +392,92 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.agent-chat {
+.agent-page {
+  display: flex;
+  height: calc(100vh - 120px);
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+/* ---- sidebar ---- */
+.sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  border-right: 1px solid #e8e8e8;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 120px);
-  max-width: 800px;
-  margin: 0 auto;
+  overflow: hidden;
+}
+.new-conv-btn {
+  margin: 12px;
+  padding: 8px 0;
+  background: #1677ff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.new-conv-btn:hover { background: #4096ff; }
+.conv-list {
+  flex: 1;
+  overflow-y: auto;
+}
+.empty-conv {
+  text-align: center;
+  color: #999;
+  padding: 24px 12px;
+  font-size: 13px;
+}
+.conv-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f5f5f5;
+  position: relative;
+}
+.conv-item:hover { background: #f5f5f5; }
+.conv-item.active { background: #e6f4ff; }
+.conv-delete {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #c0c0c0;
+  font-size: 16px;
+  line-height: 20px;
+  cursor: pointer;
+  display: none;
+  padding: 0;
+}
+.conv-item:hover .conv-delete { display: block; }
+.conv-delete:hover {
+  background: #ff4d4f;
+  color: #fff;
+}
+.conv-title {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conv-meta {
+  font-size: 11px;
+  color: #999;
+  margin-top: 2px;
+}
+
+/* ---- chat ---- */
+.agent-chat {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding-left: 16px;
 }
 
 .chat-window {

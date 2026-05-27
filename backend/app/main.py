@@ -8,6 +8,7 @@ from app.api.auth import router as auth_router
 from app.api.users import router as users_router
 from app.api.agent import router as agent_router
 from app.api.upload import router as upload_router
+from app.api.conversations import router as conversations_router
 
 app = FastAPI(title="Login API")
 
@@ -23,6 +24,7 @@ app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(agent_router)
 app.include_router(upload_router)
+app.include_router(conversations_router)
 
 uploads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
 os.makedirs(uploads_dir, exist_ok=True)

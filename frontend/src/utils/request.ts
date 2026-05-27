@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const request = axios.create({
-  baseURL: 'http://localhost:8002',
+  baseURL: 'http://localhost:8004',
   timeout: 10000,
 })
 
@@ -32,7 +32,7 @@ request.interceptors.response.use(
       if (!isRefreshing) {
         isRefreshing = true
         try {
-          const resp = await axios.post('http://localhost:8000/api/auth/refresh', {
+          const resp = await axios.post('http://localhost:8004/api/auth/refresh', {
             refresh_token: refreshToken,
           })
           const newToken = resp.data.access_token

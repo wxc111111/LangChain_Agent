@@ -1,15 +1,17 @@
-const BASE_URL = 'http://localhost:8002'
+const BASE_URL = 'http://localhost:8004'
 
 export interface SSEMessage {
-  type: 'intent' | 'tool_results' | 'content' | 'error'
+  type: 'meta' | 'intent' | 'tool_results' | 'content' | 'error'
   tools?: string[]
   reply?: string
   data?: any
+  conversation_id?: number
 }
 
 export function chatStream(
   message: string,
   images: string[],
+  conversationId: number | null,
   onMessage: (msg: SSEMessage) => Promise<void>,
   onDone: () => void,
   onError: (err: string) => void,
@@ -23,7 +25,7 @@ export function chatStream(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ message, images }),
+    body: JSON.stringify({ message, images, conversation_id: conversationId }),
     signal: controller.signal,
   })
     .then(async (response) => {

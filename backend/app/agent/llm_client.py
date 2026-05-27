@@ -1,6 +1,8 @@
 """千问大模型流式客户端"""
 
 import json
+import sys
+
 from app.config import settings
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -25,44 +27,83 @@ SUMMARY_PROMPT_NO_TOOLS = """你是一个友好的智能助手。用户的问题
 用中文回答。"""
 
 
+_llm = None
+_streaming_llm = None
+_intent_llm = None
+
+
 def build_llm():
-    """创建千问大模型实例（非流式）"""
-    return ChatOpenAI(
-        model=settings.QWEN_TEXT_MODEL,
-        api_key=settings.QWEN_API_KEY,
-        base_url=settings.QWEN_BASE_URL,
-        temperature=0.7,
-    )
+    """创建千问大模型实例（非流式）— 模块级复用避免重复建立连接"""
+    global _llm
+    if _llm is None:
+        _llm = ChatOpenAI(
+            model=settings.QWEN_TEXT_MODEL,
+            api_key=settings.QWEN_API_KEY,
+            base_url=settings.QWEN_BASE_URL,
+            temperature=0.7,
+        )
+    return _llm
+
+
+def build_intent_llm():
+    """意图识别专用 LLM（temperature=0 保证确定性输出）"""
+    global _intent_llm
+    if _intent_llm is None:
+        _intent_llm = ChatOpenAI(
+            model=settings.QWEN_TEXT_MODEL,
+            api_key=settings.QWEN_API_KEY,
+            base_url=settings.QWEN_BASE_URL,
+            temperature=0,
+        )
+    return _intent_llm
 
 
 def build_streaming_llm():
-    """创建千问大模型实例（流式）"""
-    return ChatOpenAI(
-        model=settings.QWEN_TEXT_MODEL,
-        api_key=settings.QWEN_API_KEY,
-        base_url=settings.QWEN_BASE_URL,
-        temperature=0.7,
-        streaming=True,
-    )
+    """创建千问大模型实例（流式）— 模块级复用避免重复建立连接"""
+    global _streaming_llm
+    if _streaming_llm is None:
+        _streaming_llm = ChatOpenAI(
+            model=settings.QWEN_TEXT_MODEL,
+            api_key=settings.QWEN_API_KEY,
+            base_url=settings.QWEN_BASE_URL,
+            temperature=0.7,
+            streaming=True,
+        )
+    return _streaming_llm
 
 
-async def stream_response(user_input: str, tool_results: dict):
+async def stream_response(user_input: str, tool_results: dict, history: list[dict] | None = None):
     """流式返回：将工具结果合并到上下文，交给大模型流式输出"""
     llm = build_streaming_llm()
+    messages = []
+
+    if history:
+        for h in history:
+            role = h.get("role", "")
+            content = h.get("content", "")
+            if role == "system":
+                messages.append(SystemMessage(content=content))
+            elif role == "assistant":
+                from langchain_core.messages import AIMessage
+                messages.append(AIMessage(content=content))
+            elif role == "user":
+                messages.append(HumanMessage(content=content))
 
     if not tool_results:
-        messages = [
-            SystemMessage(content=SUMMARY_PROMPT_NO_TOOLS),
-            HumanMessage(content=user_input),
-        ]
+        messages.append(SystemMessage(content=SUMMARY_PROMPT_NO_TOOLS))
+        messages.append(HumanMessage(content=user_input))
     else:
         tools_json = json.dumps(tool_results, ensure_ascii=False, indent=2)
         user_message = f"用户问题：{user_input}\n\n工具返回数据：\n{tools_json}"
-        messages = [
-            SystemMessage(content=SYSTEM_SUMMARY_PROMPT),
-            HumanMessage(content=user_message),
-        ]
+        messages.append(SystemMessage(content=SYSTEM_SUMMARY_PROMPT))
+        messages.append(HumanMessage(content=user_message))
 
-    async for chunk in llm.astream(messages):
-        if chunk.content:
-            yield chunk.content
+    count = 0
+    try:
+        async for chunk in llm.astream(messages):
+            if chunk.content:
+                count += 1
+                yield chunk.content
+    except Exception as e:
+        print(f"[LLM] stream ERROR after {count} chunks: {e}", file=sys.stderr, flush=True)
+        raise

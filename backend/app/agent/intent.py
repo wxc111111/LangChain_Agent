@@ -2,10 +2,9 @@
 
 import json
 
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from app.config import settings
+from app.agent.llm_client import build_intent_llm
 
 INTENT_SYSTEM_PROMPT = """你是一个智能助手路由器，负责分析用户输入并判断需要调用哪些子 Agent。
 
@@ -32,12 +31,7 @@ INTENT_SYSTEM_PROMPT = """你是一个智能助手路由器，负责分析用户
 
 async def detect_intent(user_input: str) -> dict:
     """使用千问大模型分析用户意图，返回需要调用的工具列表和参数"""
-    llm = ChatOpenAI(
-        model=settings.QWEN_TEXT_MODEL,
-        api_key=settings.QWEN_API_KEY,
-        base_url=settings.QWEN_BASE_URL,
-        temperature=0,
-    )
+    llm = build_intent_llm()
 
     response = await llm.ainvoke([
         SystemMessage(content=INTENT_SYSTEM_PROMPT),
