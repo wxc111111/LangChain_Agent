@@ -160,10 +160,3 @@ agent/
 | 前端 | Vue3 + TypeScript + Vite |
 | 状态 | Pinia |
 | HTTP | Axios（REST）+ fetch（SSE 流式） |
-
-
-## 效果图
-
-![img.png](projectDescriptionImage/img.png)
-
-![img_1png](projectDescriptionImage/img_1.png)
