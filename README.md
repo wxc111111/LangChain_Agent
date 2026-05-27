@@ -162,9 +162,8 @@ agent/
 | HTTP | Axios（REST）+ fetch（SSE 流式） |
 
 
-## 注意
-app/config_2.py 改为config.py 增加对应数据库等的信息
-
 ## 效果图
 
 ![img.png](projectDescriptionImage/img.png)
+
+![img_1png](projectDescriptionImage/img_1.png)

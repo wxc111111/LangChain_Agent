@@ -41,15 +41,27 @@
       </div>
     </div>
 
+    <!-- 缩略图预览 -->
+    <div v-if="pendingImages.length > 0" class="image-preview-bar">
+      <div v-for="(img, i) in pendingImages" :key="i" class="thumbnail-wrap">
+        <img :src="img.previewUrl" class="thumbnail" />
+        <button class="remove-btn" @click="removeImage(i)" :disabled="loading">x</button>
+        <span v-if="img.uploading" class="upload-spinner">上传中...</span>
+      </div>
+    </div>
+
     <div class="input-area">
+      <button class="upload-btn" :disabled="loading || pendingImages.length >= 3" @click="triggerUpload">
+        +
+      </button>
       <input
         v-model="input"
         type="text"
-        placeholder="输入问题，例如：北京今天天气怎么样？"
+        placeholder="输入问题，也可以上传图片..."
         :disabled="loading"
         @keydown.enter="send"
       />
-      <button :disabled="loading || !input.trim()" @click="send">
+      <button :disabled="loading || (!input.trim() && pendingImages.length === 0)" @click="send">
         {{ loading ? '思考中...' : '发送' }}
       </button>
     </div>
@@ -63,6 +75,7 @@
 <script setup lang="ts">
 import { ref, nextTick, onBeforeUnmount } from 'vue'
 import { chatStream, type SSEMessage } from '../../api/agent'
+import { uploadImage } from '../../api/upload'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -76,10 +89,18 @@ type ContentPart =
   | { type: 'link'; label: string; url: string }
   | { type: 'image'; alt: string; url: string }
 
+interface PendingImage {
+  previewUrl: string
+  url: string
+  uploading: boolean
+}
+
 const messages = ref<ChatMessage[]>([])
 const input = ref('')
 const loading = ref(false)
 const previewUrl = ref('')
+const pendingImages = ref<PendingImage[]>([])
+let fileInput: HTMLInputElement | null = null
 const chatWindow = ref<HTMLElement>()
 let controller: AbortController | null = null
 
@@ -148,6 +169,60 @@ function renderContentParts(msg: ChatMessage): ContentPart[] {
   return parts
 }
 
+function triggerUpload() {
+  if (!fileInput) {
+    fileInput = document.createElement('input')
+    fileInput.type = 'file'
+    fileInput.accept = 'image/png,image/jpeg,image/gif,image/webp'
+    fileInput.multiple = true
+    fileInput.onchange = handleFileChange
+  }
+  fileInput.click()
+}
+
+async function handleFileChange(e: Event) {
+  const files = Array.from((e.target as HTMLInputElement).files || [])
+  const remaining = 3 - pendingImages.value.length
+  if (remaining <= 0) return
+
+  const toUpload = files.slice(0, remaining)
+  if (files.length > remaining) {
+    alert(`最多上传3张图片，已自动截取前${remaining}张`)
+  }
+
+  for (const file of toUpload) {
+    if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) {
+      alert(`${file.name} 格式不支持，仅支持 PNG/JPEG/GIF/WebP`)
+      continue
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      alert(`${file.name} 超过10MB限制`)
+      continue
+    }
+
+    const previewUrl = URL.createObjectURL(file)
+    pendingImages.value.push({ previewUrl, url: '', uploading: true })
+    const idx = pendingImages.value.length - 1
+
+    try {
+      const result = await uploadImage(file)
+      pendingImages.value[idx].url = result.url
+      pendingImages.value[idx].uploading = false
+    } catch (err: any) {
+      alert(err.message || '上传失败')
+      pendingImages.value.splice(idx, 1)
+    }
+  }
+
+  if (fileInput) fileInput.value = ''
+}
+
+function removeImage(i: number) {
+  const img = pendingImages.value[i]
+  if (img.previewUrl) URL.revokeObjectURL(img.previewUrl)
+  pendingImages.value.splice(i, 1)
+}
+
 async function scrollBottom() {
   // 等 Vue 完成 DOM 更新后，再等浏览器完成布局计算，确保能滚动到最新高度
   await nextTick()
@@ -160,10 +235,27 @@ async function scrollBottom() {
 
 function send() {
   const text = input.value.trim()
-  if (!text || loading.value) return
+  const hasImages = pendingImages.value.some(img => img.url)
+  const hasPending = pendingImages.value.some(img => img.uploading)
+  if ((!text && !hasImages) || loading.value) return
+  if (hasPending) {
+    alert('图片还在上传中，请稍候')
+    return
+  }
 
-  messages.value.push({ role: 'user', content: text })
+  const images = pendingImages.value.map(img => img.url)
+  let content = text || ''
+  if (images.length > 0) {
+    const imgText = images.map(url => `![图片](${url})`).join('\n')
+    content = content ? content + '\n' + imgText : imgText
+  }
+  messages.value.push({ role: 'user', content })
   input.value = ''
+
+  pendingImages.value.forEach(img => {
+    if (img.previewUrl) URL.revokeObjectURL(img.previewUrl)
+  })
+  pendingImages.value = []
   loading.value = true
 
   const aiMsgIndex = messages.value.length
@@ -174,6 +266,7 @@ function send() {
 
   controller = chatStream(
     text,
+    images,
     async (msg: SSEMessage) => {
       switch (msg.type) {
         case 'intent':
@@ -370,4 +463,62 @@ onBeforeUnmount(() => {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.image-preview-bar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0;
+  flex-wrap: wrap;
+}
+.thumbnail-wrap {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #e8e8e8;
+}
+.thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.remove-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 18px;
+  padding: 0;
+}
+.upload-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.4);
+  color: #fff;
+  font-size: 11px;
+}
+.upload-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px dashed #d9d9d9;
+  border-radius: 6px;
+  background: #fafafa;
+  font-size: 20px;
+  cursor: pointer;
+  color: #999;
+  flex-shrink: 0;
+}
+.upload-btn:hover { border-color: #1677ff; color: #1677ff; }
+.upload-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>

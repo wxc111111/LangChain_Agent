@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     QWEN_API_KEY: str = ""
     QWEN_BASE_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     QWEN_TEXT_MODEL: str = "qwen-plus"
-    QWEN_OMNI_MODEL: str = "qwen-image-2.0"
+    QWEN_OMNI_MODEL: str = "qwen3.5-omni-plus"
 
     class Config:
         env_file = ".env"

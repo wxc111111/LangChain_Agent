@@ -9,6 +9,7 @@ export interface SSEMessage {
 
 export function chatStream(
   message: string,
+  images: string[],
   onMessage: (msg: SSEMessage) => Promise<void>,
   onDone: () => void,
   onError: (err: string) => void,
@@ -22,7 +23,7 @@ export function chatStream(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, images }),
     signal: controller.signal,
   })
     .then(async (response) => {
